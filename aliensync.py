@@ -16,7 +16,7 @@ from datetime import datetime  # This helps work with dates and times
 QTM_IP = "127.0.0.1"  # The address where the QTM system is running (localhost means the same computer)
 AURORA_IP = "130.39.121.10"  # The address of a computer named Aurora that runs VLC player
 VLC_TRIGGER_ENDPOINT = f"http://{AURORA_IP}:5000/start"  # The web address to tell Aurora to start VLC
-NTP_SERVER = "time.windows.com"  # The internet time server we use to get the exact current time
+NTP_SERVER = "time.google.com"  # The internet time server we use to get the exact current time
 
 # === Global variables ===
 qtm_connection = None  # This will hold our connection to QTM when we start it

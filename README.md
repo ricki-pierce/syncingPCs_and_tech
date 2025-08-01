@@ -13,6 +13,7 @@ Setup Instructions:
 
   On the Aurora R16 PC, have VLC or Windows Media Player installed. It does not have to be open.
   Be able to run Python (preferably in Visual Studio Code). Have all necessary libraries imported.
+  Use auroratriggerserver.py if you will be playing videos from VLC. Use openvidwmp.py if you will be playing videos from Windows Media Player.
   Update the video path to match where your file is: video_path = r"C:\Users\B24-Lab\Desktop\Videos\1_Ball_Social-.mp4"
   Also ensure vlc_path points to the actual VLC installation: vlc_path = r"C:\Program Files\VideoLAN\VLC\vlc.exe"
 
@@ -27,6 +28,10 @@ Running the Code:
   Click STOP when done:
     QTM recording stops,
     VLC is terminated remotely.
-  
+
+
+  NEXT STEPS:
+  Manually calibrate the Optoma projectors (NVIDIA / Autoblend No Cam --> client = aurora; server = alienware)
+  Be able to play video from previous set up on the curved projector clearly.
 
 

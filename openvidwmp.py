@@ -5,7 +5,15 @@ import time
 from pywinauto import Application, Desktop
 
 app = Flask(__name__)
-wmp_process = None
+wmp_process = None  # Global placeholder
+
+from flask import Flask
+import subprocess
+import time
+from pywinauto import Application, Desktop
+
+app = Flask(__name__)
+wmp_process = None  # Global variable to track WMP process
 
 @app.route('/start', methods=['POST'])
 def start_wmp():
@@ -13,30 +21,54 @@ def start_wmp():
     try:
         video_path = r"C:\Users\B24-Lab\Desktop\Videos\1_Ball_Social-.mp4"
 
-        # Launch WMP via subprocess
+        # Launch Windows Media Player with the video
         wmp_process = subprocess.Popen(
             ['start', 'wmplayer', video_path],
             shell=True
         )
 
-        # Give WMP time to launch and load video
-        time.sleep(5)
+        # Wait up to 10 seconds for WMP window to appear
+        MAX_WAIT = 10
+        INTERVAL = 0.5
 
-        # Connect to the WMP window
-        app = Application(backend="uia").connect(title_re=".*Windows Media Player.*")
-        window = app.window(title_re=".*Windows Media Player.*")
+        wmp_window = None
+        start_time = time.time()
+        while time.time() - start_time < MAX_WAIT:
+            wmp_windows = Desktop(backend="uia").windows(class_name="WMP Skin Host")
+            if wmp_windows:
+                wmp_window = wmp_windows[0]
+                break
+            time.sleep(INTERVAL)
+
+        if wmp_window is None:
+            return "Error: WMP window not found", 500
+
+        # Connect to the window
+        app_connected = Application(backend="uia").connect(handle=wmp_window.handle)
+        window = app_connected.window(handle=wmp_window.handle)
         window.set_focus()
 
-        # Look for "View Full Screen" button
+        print(f"[Debug] Connected to window: {window.window_text()}")
+
+        # Try fullscreen via button or ALT+ENTER (only once)
         full_screen_button = window.child_window(title="View Full Screen", control_type="Button")
         if full_screen_button.exists():
-            full_screen_button.click_input()
-            return "WMP launched and switched to full screen.", 200
+            try:
+                full_screen_button.click_input()
+                print("[✓] Clicked 'View Full Screen' button.")
+            except Exception as e:
+                print(f"[!] Error clicking full screen button: {e}")
         else:
-            return "WMP launched, but full screen button not found.", 500
+            print("[!] Full screen button not found. Sending ALT+ENTER once.")
+            window.type_keys("%{ENTER}")
+
+        return "WMP launched and switched to full screen (or attempted fullscreen).", 200
 
     except Exception as e:
         return f"Error starting WMP: {e}", 500
+
+
+
 
 @app.route('/stop', methods=['POST'])
 def stop_wmp():

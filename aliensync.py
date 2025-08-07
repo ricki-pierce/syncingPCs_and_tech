@@ -23,6 +23,16 @@ NTP_SERVER = "time.google.com"
 qtm_connection = None
 loop = asyncio.new_event_loop()
 
+def log_event(msg, start_time=None):
+    now = datetime.now(timezone.utc)
+    timestamp = now.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    if start_time:
+        delta = now - start_time
+        print(f"[{timestamp}] {msg} | Delay: {delta.total_seconds():.3f} seconds")
+    else:
+        print(f"[{timestamp}] {msg}")
+    return now
+
 # === Asyncio thread setup ===
 def start_event_loop():
     asyncio.set_event_loop(loop)
@@ -97,38 +107,54 @@ def stop_vlc_on_aurora():
 
 # === Button logic ===
 def on_start_button_click():
-    print("[*] Syncing clocks...")
-    sync_time_ntp(NTP_SERVER)
+    print("="*60)
+    start_overall = log_event("[*] START button clicked")
 
-    # Add a small buffer so Aurora has time to prepare
+    log_event("[*] Syncing NTP time...", start_overall)
+    sync_time_ntp(NTP_SERVER)
+    ntp_sync_time = log_event("[✓] NTP time synced", start_overall)
+
     buffer_seconds = 5
     start_time = datetime.now(timezone.utc) + timedelta(seconds=buffer_seconds)
-    print(f"[*] Intended sync start time (UTC + {buffer_seconds}s buffer): {start_time}")
+    log_event(f"[*] Scheduled start time (UTC + {buffer_seconds}s): {start_time}", ntp_sync_time)
 
-    # Start QTM asynchronously
-    print(f"[*] Triggering QTM at {datetime.now(timezone.utc)} (UTC)")
+    # Start QTM recording
+    log_event("[*] Starting QTM recording...", ntp_sync_time)
+    qtm_start_time = datetime.now(timezone.utc)
     asyncio.run_coroutine_threadsafe(start_qtm_recording(), loop)
+    log_event("[✓] QTM start triggered (async)", qtm_start_time)
 
-    # Trigger VLC playback with epoch timestamp
-    print(f"[*] Triggering VLC at {datetime.now(timezone.utc)} (UTC)")
+    # Trigger VLC on Aurora
+    log_event("[*] Sending VLC trigger to Aurora...", ntp_sync_time)
     try:
         payload = {"start_time": start_time.timestamp()}
         response = requests.post(VLC_TRIGGER_ENDPOINT, json=payload)
 
         if response.status_code == 200:
-            print("[✓] VLC playback triggered on Aurora.")
+            log_event("[✓] VLC playback triggered on Aurora", ntp_sync_time)
         else:
-            print(f"[!] Aurora responded with status: {response.status_code}")
-            print(f"[!] Response body: {response.text}")  # log details
+            log_event(f"[!] Aurora responded with status {response.status_code}: {response.text}", ntp_sync_time)
     except Exception as e:
-        print(f"[!] Failed to trigger VLC on Aurora: {e}")
+        log_event(f"[!] Failed to trigger VLC on Aurora: {e}", ntp_sync_time)
+
+    log_event("[✓] Start sequence completed", start_overall)
+    print("="*60)
 
 
 
 def on_stop_button_click():
-    print("[*] Stopping QTM and VLC...")
+    print("="*60)
+    start_stop = log_event("[*] STOP button clicked")
+
     asyncio.run_coroutine_threadsafe(stop_qtm_recording(), loop)
+    log_event("[✓] QTM stop triggered (async)", start_stop)
+
     stop_vlc_on_aurora()
+    log_event("[✓] VLC stop triggered", start_stop)
+
+    log_event("[✓] Stop sequence completed", start_stop)
+    print("="*60)
+
 
 def on_close():
     loop.call_soon_threadsafe(loop.stop)

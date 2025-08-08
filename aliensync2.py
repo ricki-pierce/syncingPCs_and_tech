@@ -75,8 +75,17 @@ async def stop_qtm_recording():
 
 # === Video Handling ===
 def get_video_files():
-    return [f for f in os.listdir(VIDEO_FOLDER_PATH)
-            if f.endswith('.mp4') and os.path.isfile(os.path.join(VIDEO_FOLDER_PATH, f))]
+    try:
+        response = requests.get(f"http://{AURORA_IP}:5000/videos")
+        if response.status_code == 200:
+            return response.json().get("videos", [])
+        else:
+            print(f"[!] Failed to get video list: {response.text}")
+            return []
+    except Exception as e:
+        print(f"[!] Error fetching videos: {e}")
+        return []
+
 
 def choose_video(category=None):
     global played_videos
@@ -119,7 +128,9 @@ def save_to_excel():
     global excel_file_path, session_data, current_trial
     if not excel_file_path:
         today = datetime.now().strftime("%m_%d_%y")
-        excel_file_path = f"{patient_initials}_{today}.xlsx"
+        save_dir = r"C:\Users\AoMV Lab\ricki projects"
+        os.makedirs(save_dir, exist_ok=True)  # Ensure folder exists
+        excel_file_path = os.path.join(save_dir, f"{patient_initials}_{today}.xlsx")
         wb = Workbook()
     else:
         wb = load_workbook(excel_file_path)
@@ -167,10 +178,18 @@ def on_stop():
         save_to_excel()
 
 def on_replay():
+    global current_trial
     if last_played_video:
-        start_time = datetime.now(timezone.utc) + timedelta(seconds=3)
+        sync_time_ntp(NTP_SERVER)
+        buffer_seconds = 5
+        start_time = datetime.now(timezone.utc) + timedelta(seconds=buffer_seconds)
+        log_event(f"Scheduled start time: {start_time}")
+
+        asyncio.run_coroutine_threadsafe(start_qtm_recording(), loop)
+
         trigger_video_play(last_played_video, start_time)
         log_event(f"Replaying video: {last_played_video}")
+        update_video_log(last_played_video)
 
 def on_next(category):
     global current_trial
@@ -178,20 +197,30 @@ def on_next(category):
         messagebox.showinfo("Done", "All trials completed.")
         return
     current_trial += 1
+
     video = choose_video(category)
     if not video:
         messagebox.showerror("Error", f"No more {category} videos left.")
         return
+
     played_videos.add(video)
-    start_time = datetime.now(timezone.utc) + timedelta(seconds=3)
+
+    sync_time_ntp(NTP_SERVER)
+    buffer_seconds = 5
+    start_time = datetime.now(timezone.utc) + timedelta(seconds=buffer_seconds)
+    log_event(f"Scheduled start time: {start_time}")
+
+    asyncio.run_coroutine_threadsafe(start_qtm_recording(), loop)
+
     trigger_video_play(video, start_time)
     update_video_log(video)
 
+
 def update_video_log(video):
-    if "Social" in video:
-        tag = "Social"
-    elif "NonSocial" in video:
+    if "_NonSocial" in video:
         tag = "NonSocial"
+    elif "_Social" in video:
+        tag = "Social"
     else:
         tag = "Unknown"
     video_log.insert(tk.END, f"Trial {current_trial}: {video} ({tag})")

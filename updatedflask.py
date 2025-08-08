@@ -20,6 +20,15 @@ def log_event(message, start_time=None):
         print(f"[{timestamp}] {message}")
     return now
 
+@app.route('/videos', methods=['GET'])
+def list_videos():
+    try:
+        files = [f for f in os.listdir(VIDEO_FOLDER_PATH)
+                 if f.endswith('.mp4') and os.path.isfile(os.path.join(VIDEO_FOLDER_PATH, f))]
+        return {"videos": files}, 200
+    except Exception as e:
+        return {"error": str(e)}, 500
+
 @app.route('/start', methods=['POST'])
 def start_wmp():
     global wmp_process

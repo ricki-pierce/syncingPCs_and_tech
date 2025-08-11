@@ -1,14 +1,19 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import subprocess
 import os
 import time
 from pywinauto import Application, Desktop
 from datetime import datetime
+import random
 
 app = Flask(__name__)
 wmp_process = None  # Global variable to track WMP process
 
-VIDEO_FOLDER_PATH = r"C:\Users\B24-Lab\Desktop\Videos"
+VIDEO_FOLDER_PATH = r"C:\Users\B24-Lab\Desktop\Videos2"
+
+# Track remaining videos so none are repeated in a session
+social_remaining = []
+nonsocial_remaining = []
 
 def log_event(message, start_time=None):
     now = datetime.now()
@@ -20,17 +25,64 @@ def log_event(message, start_time=None):
         print(f"[{timestamp}] {message}")
     return now
 
-@app.route('/videos', methods=['GET'])
-def list_videos():
+def load_video_lists():
+    """Load fresh lists of social and nonsocial videos from folder."""
+    global social_remaining, nonsocial_remaining
     try:
         files = [f for f in os.listdir(VIDEO_FOLDER_PATH)
-                 if f.endswith('.mp4') and os.path.isfile(os.path.join(VIDEO_FOLDER_PATH, f))]
+                 if f.lower().endswith('.mp4') and os.path.isfile(os.path.join(VIDEO_FOLDER_PATH, f))]
+
+        # Ensure strict filtering
+        nonsocial_remaining = [
+            f for f in files
+            if "_nonsocial-" in f.lower() and "_social-" not in f.lower()
+        ]
+        social_remaining = [
+            f for f in files
+            if "_social-" in f.lower() and "_nonsocial-" not in f.lower()
+        ]
+
+        print(f"[✓] Loaded {len(social_remaining)} social and {len(nonsocial_remaining)} nonsocial videos.")
+    except Exception as e:
+        print(f"[!] Error loading video lists: {e}")
+        social_remaining = []
+        nonsocial_remaining = []
+
+
+
+@app.route('/videos', methods=['GET'])
+def list_videos():
+    """Return all videos in the folder."""
+    try:
+        files = [f for f in os.listdir(VIDEO_FOLDER_PATH)
+                 if f.lower().endswith('.mp4') and os.path.isfile(os.path.join(VIDEO_FOLDER_PATH, f))]
         return {"videos": files}, 200
     except Exception as e:
         return {"error": str(e)}, 500
 
+@app.route('/random_social', methods=['GET'])
+def random_social():
+    """Return a random unused social video."""
+    global social_remaining
+    if not social_remaining:
+        return {"error": "No more social videos available"}, 404
+    choice = random.choice(social_remaining)
+    social_remaining.remove(choice)
+    return jsonify({"video": choice})
+
+@app.route('/random_nonsocial', methods=['GET'])
+def random_nonsocial():
+    """Return a random unused nonsocial video."""
+    global nonsocial_remaining
+    if not nonsocial_remaining:
+        return {"error": "No more nonsocial videos available"}, 404
+    choice = random.choice(nonsocial_remaining)
+    nonsocial_remaining.remove(choice)
+    return jsonify({"video": choice})
+
 @app.route('/start', methods=['POST'])
 def start_wmp():
+    """Launch Windows Media Player with specified video."""
     global wmp_process
     try:
         start_overall = log_event("Received request to START WMP")
@@ -43,7 +95,7 @@ def start_wmp():
         video_path = os.path.join(VIDEO_FOLDER_PATH, video_name)
 
         # Validate file exists and is an mp4 file
-        if not os.path.isfile(video_path) or not video_path.endswith(".mp4"):
+        if not os.path.isfile(video_path) or not video_path.lower().endswith(".mp4"):
             return f"Error: File not found or invalid type: {video_name}", 404
 
         log_event(f"Launching Windows Media Player with: {video_name}", start_overall)
@@ -98,6 +150,7 @@ def start_wmp():
 
 @app.route('/stop', methods=['POST'])
 def stop_wmp():
+    """Stop Windows Media Player."""
     try:
         start_time = log_event("Received request to STOP WMP")
         os.system("taskkill /im wmplayer.exe /f")
@@ -108,4 +161,5 @@ def stop_wmp():
         return f"Error stopping WMP: {e}", 500
 
 if __name__ == '__main__':
+    load_video_lists()  # Load lists at startup
     app.run(host='0.0.0.0', port=5000)

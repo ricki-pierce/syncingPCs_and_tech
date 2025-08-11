@@ -53,11 +53,13 @@ async def start_qtm_recording():
     try:
         qtm_connection = await qtm.connect(QTM_IP)
         if qtm_connection is None:
-            print("[!] Failed to connect to QTM.")
+            log_event("[!] Failed to connect to QTM.")
+
             return
         await qtm_connection.take_control("")
         await qtm_connection.start()
-        print("[✓] QTM recording started.")
+        log_event("[✓] QTM recording started.")
+
     except Exception as e:
         print(f"[!] QTM start error: {e}")
 
@@ -66,9 +68,10 @@ async def stop_qtm_recording():
     try:
         if qtm_connection:
             await qtm_connection.stop()
-            print("[✓] QTM recording stopped.")
+            log_event("[✓] QTM recording stopped.")
+
             qtm_connection.disconnect()
-            print("[✓] QTM disconnected.")
+            log_event("[✓] QTM disconnected.")
             qtm_connection = None
     except Exception as e:
         print(f"[!] QTM stop error: {e}")
@@ -90,13 +93,17 @@ def get_video_files():
 def choose_video(category=None):
     global played_videos
     videos = get_video_files()
-    if category:
-        videos = [v for v in videos if category in v and v not in played_videos]
+    if category == "Social":
+        videos = [v for v in videos if "_Social" in v and "_NonSocial" not in v and v not in played_videos]
+    elif category == "NonSocial":
+        videos = [v for v in videos if "_NonSocial" in v and "_Social" not in v and v not in played_videos]
     else:
         videos = [v for v in videos if v not in played_videos]
     if not videos:
         return None
     return random.choice(videos)
+
+
 
 def trigger_video_play(video_file, start_time):
     global last_played_video
@@ -120,9 +127,15 @@ def log_event(msg, start_time=None):
     now = datetime.now(timezone.utc)
     timestamp = now.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     delay = (now - start_time).total_seconds() if start_time else None
+
+    # Print to console as before
     print(f"[{timestamp}] {msg} | Delay: {delay:.3f} seconds" if delay else f"[{timestamp}] {msg}")
+
+    # Store in session data for Excel
     session_data.append((msg, timestamp, f"{delay:.3f}" if delay else ""))
+
     return now
+
 
 def save_to_excel():
     global excel_file_path, session_data, current_trial
@@ -191,6 +204,7 @@ def on_replay():
         log_event(f"Replaying video: {last_played_video}")
         update_video_log(last_played_video)
 
+
 def on_next(category):
     global current_trial
     if current_trial >= trial_count:
@@ -214,6 +228,7 @@ def on_next(category):
 
     trigger_video_play(video, start_time)
     update_video_log(video)
+
 
 
 def update_video_log(video):

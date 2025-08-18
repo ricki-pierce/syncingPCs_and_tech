@@ -1,0 +1,118 @@
+from flask import Flask, request
+from datetime import datetime
+import threading
+import queue
+import os
+import re
+import openpyxl
+import subprocess
+
+app = Flask(__name__)
+
+NTP_SERVER = "time.google.com"
+excel_file_path = None
+current_trial = None
+
+# Thread-safe queue for logs
+log_queue = queue.Queue()
+
+
+def sync_windows_time():
+    try:
+        output = subprocess.check_output(
+            ['w32tm', '/resync'],
+            shell=True, stderr=subprocess.STDOUT, text=True
+        )
+        print(f"Time sync success:\n{output}")
+    except subprocess.CalledProcessError as e:
+        print(f"Time sync failed:\n{e.output}")
+
+
+def ensure_excel_file(path):
+    """Create a new Excel file with headers if it doesn’t exist."""
+    if not os.path.exists(path):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["Trial", "Message", "Timestamp"])
+        wb.save(path)
+        print(f"[+] Created new Excel log file: {path}")
+
+
+def append_log_to_excel(path, message):
+    """Append a single log entry to the Excel file."""
+    global current_trial
+    wb = openpyxl.load_workbook(path)
+    ws = wb.active
+
+    if message.startswith("TRIAL"):
+        trial_match = re.match(r"(TRIAL \d+)", message)
+        if trial_match:
+            current_trial = trial_match.group(1)
+            rest_message = message[len(current_trial):].strip()
+            ws.append([current_trial, rest_message, ""])
+        else:
+            ws.append(["", message, ""])
+    else:
+        timestamp = ""
+        msg_text = message
+
+        match = re.match(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s*(.*)", message)
+        if match:
+            timestamp, msg_text = match.groups()
+        else:
+            match = re.match(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\s*(.*)", message)
+            if match:
+                timestamp, msg_text = match.groups()
+
+        ws.append(["", msg_text, timestamp])
+
+    wb.save(path)
+
+
+def log_writer():
+    """Background worker that writes logs from the queue into Excel."""
+    global excel_file_path
+    while True:
+        message = log_queue.get()  # blocks until item available
+        if excel_file_path:
+            try:
+                ensure_excel_file(excel_file_path)
+                append_log_to_excel(excel_file_path, message)
+            except Exception as e:
+                print(f"[Error writing log]: {e}")
+        else:
+            print("[!] Excel path not set, discarding log:", message)
+        log_queue.task_done()
+
+
+@app.route('/set_excel_file_path', methods=['POST'])
+def set_excel_file_path():
+    global excel_file_path
+    data = request.get_json()
+    path = data.get("excel_file_path")
+    if not path:
+        return "Missing 'excel_file_path'", 400
+
+    excel_file_path = path
+    ensure_excel_file(excel_file_path)
+    print(f"[+] Excel path set to: {excel_file_path}")
+    return "Excel file path updated", 200
+
+
+@app.route('/log', methods=['POST'])
+def log_event():
+    data = request.get_json()
+    message = data.get("log")
+    if not message:
+        return "Missing 'log'", 400
+
+    print(f"[Log received] {message}")
+    log_queue.put(message)  # enqueue for async write
+    return "Log accepted", 200
+
+
+if __name__ == '__main__':
+    sync_windows_time()
+    print("Starting log server...")
+    threading.Thread(target=log_writer, daemon=True).start()
+    app.run(host='0.0.0.0', port=8000)

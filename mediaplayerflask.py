@@ -1,4 +1,4 @@
-#This is the flask server to be used on Aurora.
+  #This is the flask server to be used on Aurora.
 #Timestamps according to the domain controller clock (Windows)
 from flask import Flask, request, jsonify
 import subprocess
@@ -221,3 +221,4 @@ if __name__ == '__main__':
     sync_windows_time()         # Then Windows time sync
     load_video_lists()  # Load lists at startup
     app.run(host='0.0.0.0', port=5000)
+
